@@ -272,8 +272,8 @@ jobs:
           path: tests/bpf-upgradeable-state/target
           key: cargo-${{ runner.os }}-tests/bpf-upgradeable-state-${{ env.ANCHOR_VERSION }}-${{ env.SOLANA_CLI_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - run: solana-test-validator -r --quiet &
-        name: start validator
+      - run: surfpool start --offline --no-tui --no-studio --disable-instruction-profiling & # TODO: add --quiet flag when we have it, and also think about a `--no-log-file` flag
+        name: start surfpool
       - run: cd tests/bpf-upgradeable-state && yarn --frozen-lockfile
       - run: cd tests/bpf-upgradeable-state
       - run: cd tests/bpf-upgradeable-state && anchor build --skip-lint

@@ -295,10 +295,16 @@ pub struct Config {
     // Separate entry next to test_config because
     // "anchor localnet" only has access to the Anchor.toml,
     // not the Test.toml files
+    pub validator: Option<ValidatorType>,
     pub test_validator: Option<TestValidator>,
     pub test_config: Option<TestConfig>,
 }
 
+#[derive(Debug)]
+pub enum ValidatorType {
+    Solana,
+    Surfpool(SurfpoolConfig),
+}
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct ToolchainConfig {
     pub anchor_version: Option<String>,
@@ -404,6 +410,14 @@ pub enum BootstrapMode {
 pub enum ProgramArch {
     Bpf,
     Sbf,
+}
+
+#[derive(ValueEnum, Parser, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ValidatorTypeChoice {
+    /// Use Surfpool validator (default)
+    Surfpool,
+    /// Use Solana test validator
+    Solana,
 }
 impl ProgramArch {
     pub fn build_subcommand(&self) -> &str {
@@ -635,6 +649,7 @@ impl FromStr for Config {
                 wallet: shellexpand::tilde(&cfg.provider.wallet).parse()?,
             },
             scripts: cfg.scripts.unwrap_or_default(),
+            validator: None, // Will be set based on CLI flags
             test_validator: cfg.test.map(Into::into),
             test_config: None,
             programs: cfg.programs.map_or(Ok(BTreeMap::new()), deser_programs)?,
@@ -721,6 +736,43 @@ pub struct TestValidator {
     pub startup_wait: i32,
     pub shutdown_wait: i32,
     pub upgradeable: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct SurfpoolConfig {
+    pub manifest_path: String,
+    pub simnet_port: u16,
+    pub ws_port: u16,
+    pub network_host: String,
+    pub slot_time: u64,
+    pub rpc_url: Option<String>,
+    pub network: Option<NetworkType>,
+    pub no_tui: bool,
+    pub debug: bool,
+    pub no_deploy: bool,
+    pub runbooks: Vec<String>,
+    pub airdrop_addresses: Vec<String>,
+    pub airdrop_token_amount: u64,
+    pub airdrop_keypair_path: Vec<String>,
+    pub watch: bool,
+    pub plugin_config_path: Vec<String>,
+    pub subgraph_db: Option<String>,
+    pub no_studio: bool,
+    pub studio_port: u16,
+    pub offline: bool,
+    pub disable_instruction_profiling: bool,
+    pub log_level: String,
+    pub log_dir: String,
+    pub max_profiles: usize,
+}
+#[derive(Debug, Clone)]
+pub enum NetworkType {
+    /// Solana Mainnet-Beta (https://api.mainnet-beta.solana.com)
+    Mainnet,
+    /// Solana Devnet (https://api.devnet.solana.com)
+    Devnet,
+    /// Solana Testnet (https://api.testnet.solana.com)
+    Testnet,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]

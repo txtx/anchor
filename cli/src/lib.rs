@@ -1,7 +1,8 @@
 use crate::config::{
     get_default_ledger_path, BootstrapMode, BuildConfig, Config, ConfigOverride, Manifest,
-    PackageManager, ProgramArch, ProgramDeployment, ProgramWorkspace, ScriptsConfig, TestValidator,
-    WithPath, SHUTDOWN_WAIT, STARTUP_WAIT,
+    PackageManager, ProgramArch, ProgramDeployment, ProgramWorkspace, ScriptsConfig,
+    SurfpoolConfig, TestValidator, ValidatorType, ValidatorTypeChoice, WithPath, SHUTDOWN_WAIT,
+    STARTUP_WAIT,
 };
 use anchor_client::Cluster;
 use anchor_lang::idl::{IdlAccount, IdlInstruction, ERASED_AUTHORITY};
@@ -217,6 +218,9 @@ pub enum Command {
         /// Run the test suites under the specified path
         #[clap(long)]
         run: Vec<String>,
+        /// Validator type to use for local testing
+        #[clap(value_enum, long, default_value = "surfpool")]
+        validator: ValidatorTypeChoice,
         args: Vec<String>,
         /// Environment variables to pass into the docker container
         #[clap(short, long, required = false)]
@@ -328,6 +332,9 @@ pub enum Command {
         /// Architecture to use when building the program
         #[clap(value_enum, long, default_value = "sbf")]
         arch: ProgramArch,
+        /// Validator type to use for local testing
+        #[clap(value_enum, long, default_value = "surfpool")]
+        validator: ValidatorTypeChoice,
         /// Environment variables to pass into the docker container
         #[clap(short, long, required = false)]
         env: Vec<String>,
@@ -855,6 +862,7 @@ fn process_command(opts: Opts) -> Result<()> {
             no_idl,
             detach,
             run,
+            validator,
             args,
             env,
             cargo_args,
@@ -870,6 +878,7 @@ fn process_command(opts: Opts) -> Result<()> {
             no_idl,
             detach,
             run,
+            validator,
             args,
             env,
             cargo_args,
@@ -889,6 +898,7 @@ fn process_command(opts: Opts) -> Result<()> {
             skip_build,
             skip_deploy,
             skip_lint,
+            validator,
             env,
             cargo_args,
             arch,
@@ -897,6 +907,7 @@ fn process_command(opts: Opts) -> Result<()> {
             skip_build,
             skip_deploy,
             skip_lint,
+            validator,
             env,
             cargo_args,
             arch,
@@ -2941,6 +2952,7 @@ fn test(
     no_idl: bool,
     detach: bool,
     tests_to_run: Vec<String>,
+    validator_type: ValidatorTypeChoice,
     extra_args: Vec<String>,
     env_vars: Vec<String>,
     cargo_args: Vec<String>,
@@ -2956,6 +2968,14 @@ fn test(
         .collect::<Result<Vec<_>, _>>()?;
 
     with_workspace(cfg_override, |cfg| {
+        // Set validator type based on CLI choice
+        cfg.validator = Some(match validator_type {
+            ValidatorTypeChoice::Surfpool => {
+                ValidatorType::Surfpool(get_surfpool_config(cfg, &cfg.test_validator)?)
+            }
+            ValidatorTypeChoice::Solana => ValidatorType::Solana,
+        });
+
         // Build if needed.
         if !skip_build {
             build(
@@ -3026,6 +3046,7 @@ fn test(
                 skip_local_validator,
                 skip_deploy,
                 detach,
+                validator_type,
                 &cfg.test_validator,
                 &cfg.scripts,
                 &extra_args,
@@ -3053,6 +3074,7 @@ fn test(
                     skip_local_validator,
                     skip_deploy,
                     detach,
+                    validator_type,
                     &test_suite.1.test,
                     &test_suite.1.scripts,
                     &extra_args,
@@ -3071,6 +3093,7 @@ fn run_test_suite(
     skip_local_validator: bool,
     skip_deploy: bool,
     detach: bool,
+    validator_type: ValidatorTypeChoice,
     test_validator: &Option<TestValidator>,
     scripts: &ScriptsConfig,
     extra_args: &[String],
@@ -3083,7 +3106,13 @@ fn run_test_suite(
             true => None,
             false => Some(validator_flags(cfg, test_validator)?),
         };
-        validator_handle = Some(start_test_validator(cfg, test_validator, flags, true)?);
+        validator_handle = Some(start_validator(
+            cfg,
+            validator_type,
+            test_validator,
+            flags,
+            true,
+        )?);
     }
 
     let url = cluster_url(cfg, test_validator);
@@ -3378,7 +3407,159 @@ fn stream_logs(config: &WithPath<Config>, rpc_url: &str) -> Result<Vec<std::proc
     Ok(handles)
 }
 
-fn start_test_validator(
+fn get_surfpool_config(
+    cfg: &Config,
+    test_validator: &Option<TestValidator>,
+) -> Result<SurfpoolConfig> {
+    // Get default surfpool configuration
+    let mut surfpool_config = SurfpoolConfig {
+        manifest_path: "Cargo.toml".to_string(),
+        simnet_port: 8899,
+        ws_port: 8900,
+        network_host: "127.0.0.1".to_string(),
+        slot_time: 400,
+        rpc_url: None,
+        network: None,
+        no_tui: false,
+        debug: false,
+        no_deploy: false,
+        runbooks: vec![],
+        airdrop_addresses: vec![],
+        airdrop_token_amount: 1000000000,
+        airdrop_keypair_path: vec![],
+        watch: false,
+        plugin_config_path: vec![],
+        subgraph_db: None,
+        no_studio: false,
+        studio_port: 3000,
+        offline: false,
+        disable_instruction_profiling: false,
+        log_level: "info".to_string(),
+        log_dir: "logs".to_string(),
+        max_profiles: 10,
+    };
+
+    // Override with configuration from Anchor.toml if available
+    if let Some(validator_type) = &cfg.validator {
+        if let ValidatorType::Surfpool(config) = validator_type {
+            surfpool_config = config.clone();
+        }
+    }
+
+    // Override with test validator configuration if available
+    if let Some(test) = test_validator {
+        if let Some(validator) = &test.validator {
+            surfpool_config.simnet_port = validator.rpc_port;
+            surfpool_config.network_host = validator.bind_address.clone();
+        }
+    }
+
+    Ok(surfpool_config)
+}
+
+fn start_validator(
+    cfg: &Config,
+    validator_type: ValidatorTypeChoice,
+    test_validator: &Option<TestValidator>,
+    flags: Option<Vec<String>>,
+    test_log_stdout: bool,
+) -> Result<Child> {
+    match validator_type {
+        ValidatorTypeChoice::Surfpool => {
+            start_surfpool_validator(cfg, test_validator, flags, test_log_stdout)
+        }
+        ValidatorTypeChoice::Solana => {
+            start_solana_validator(cfg, test_validator, flags, test_log_stdout)
+        }
+    }
+}
+
+fn start_surfpool_validator(
+    cfg: &Config,
+    test_validator: &Option<TestValidator>,
+    _flags: Option<Vec<String>>,
+    test_log_stdout: bool,
+) -> Result<Child> {
+    let (_test_ledger_directory, test_ledger_log_filename) =
+        test_validator_file_paths(test_validator)?;
+
+    // Start surfpool validator for testing.
+    let (validator_stdout, validator_stderr) = match test_log_stdout {
+        true => {
+            let validator_stdout_file = File::create(&test_ledger_log_filename)?;
+            let validator_stderr_file = validator_stdout_file.try_clone()?;
+            (
+                Stdio::from(validator_stdout_file),
+                Stdio::from(validator_stderr_file),
+            )
+        }
+        false => (Stdio::inherit(), Stdio::inherit()),
+    };
+
+    // Get surfpool configuration
+    let surfpool_config = get_surfpool_config(cfg, test_validator)?;
+
+    // Check if ports are free
+    if !portpicker::is_free(surfpool_config.simnet_port) {
+        return Err(anyhow!(
+            "Your configured simnet port: {} is already in use",
+            surfpool_config.simnet_port
+        ));
+    }
+    if !portpicker::is_free(surfpool_config.ws_port) {
+        return Err(anyhow!(
+            "Your configured websocket port: {} is already in use",
+            surfpool_config.ws_port
+        ));
+    }
+
+    let mut validator_handle = std::process::Command::new("surfpool")
+        .arg("--manifest-path")
+        .arg(&surfpool_config.manifest_path)
+        .arg("--simnet-port")
+        .arg(surfpool_config.simnet_port.to_string())
+        .arg("--ws-port")
+        .arg(surfpool_config.ws_port.to_string())
+        .arg("--network-host")
+        .arg(&surfpool_config.network_host)
+        .arg("--slot-time")
+        .arg(surfpool_config.slot_time.to_string())
+        .stdout(validator_stdout)
+        .stderr(validator_stderr)
+        .spawn()
+        .map_err(|e| anyhow!("Failed to spawn `surfpool`: {e}"))?;
+
+    // Wait for the validator to be ready.
+    let rpc_url = format!(
+        "http://{}:{}",
+        surfpool_config.network_host, surfpool_config.simnet_port
+    );
+    let client = create_client(rpc_url);
+    let mut count = 0;
+    let ms_wait = test_validator
+        .as_ref()
+        .map(|test| test.startup_wait)
+        .unwrap_or(STARTUP_WAIT);
+    while count < ms_wait {
+        let r = client.get_latest_blockhash();
+        if r.is_ok() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        count += 100;
+    }
+    if count >= ms_wait {
+        eprintln!(
+            "Unable to get latest blockhash. Surfpool validator does not look started. \
+            Check {test_ledger_log_filename:?} for errors. Consider increasing [test.startup_wait] in Anchor.toml."
+        );
+        validator_handle.kill()?;
+        std::process::exit(1);
+    }
+    Ok(validator_handle)
+}
+
+fn start_solana_validator(
     cfg: &Config,
     test_validator: &Option<TestValidator>,
     flags: Option<Vec<String>>,
@@ -3502,9 +3683,16 @@ fn test_validator_file_paths(test_validator: &Option<TestValidator>) -> Result<(
 fn cluster_url(cfg: &Config, test_validator: &Option<TestValidator>) -> String {
     let is_localnet = cfg.provider.cluster == Cluster::Localnet;
     match is_localnet {
-        // Cluster is Localnet, assume the intent is to use the configuration
-        // for solana-test-validator
-        true => test_validator_rpc_url(test_validator),
+        // Cluster is Localnet, determine which validator to use
+        true => match &cfg.validator {
+            Some(ValidatorType::Surfpool(surfpool_config)) => {
+                format!(
+                    "http://{}:{}",
+                    surfpool_config.network_host, surfpool_config.simnet_port
+                )
+            }
+            Some(ValidatorType::Solana) | None => test_validator_rpc_url(test_validator),
+        },
         false => cfg.provider.cluster.url().to_string(),
     }
 }
@@ -4243,11 +4431,20 @@ fn localnet(
     skip_build: bool,
     skip_deploy: bool,
     skip_lint: bool,
+    validator_type: ValidatorTypeChoice,
     env_vars: Vec<String>,
     cargo_args: Vec<String>,
     arch: ProgramArch,
 ) -> Result<()> {
     with_workspace(cfg_override, |cfg| {
+        // Set validator type based on CLI choice
+        cfg.validator = Some(match validator_type {
+            ValidatorTypeChoice::Surfpool => {
+                ValidatorType::Surfpool(get_surfpool_config(cfg, &cfg.test_validator)?)
+            }
+            ValidatorTypeChoice::Solana => ValidatorType::Solana,
+        });
+
         // Build if needed.
         if !skip_build {
             build(
@@ -4275,7 +4472,8 @@ fn localnet(
             false => Some(validator_flags(cfg, &cfg.test_validator)?),
         };
 
-        let validator_handle = &mut start_test_validator(cfg, &cfg.test_validator, flags, false)?;
+        let validator_handle =
+            &mut start_validator(cfg, validator_type, &cfg.test_validator, flags, false)?;
 
         // Setup log reader.
         let url = test_validator_rpc_url(&cfg.test_validator);

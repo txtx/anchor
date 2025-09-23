@@ -220,6 +220,8 @@ pub enum Command {
         /// Validator type to use for local testing
         #[clap(value_enum, long, default_value = "surfpool")]
         validator: ValidatorTypeChoice,
+        /// Additional arguments to pass to the test runner (use `--` to terminate)
+        #[clap(long = "args", num_args = 1.., value_terminator = "--")]
         args: Vec<String>,
         /// Environment variables to pass into the docker container
         #[clap(short, long, required = false)]
@@ -227,8 +229,8 @@ pub enum Command {
         /// Arguments to pass to the underlying `cargo build-sbf` command.
         #[clap(required = false, last = true)]
         cargo_args: Vec<String>,
-        /// Additional arguments to pass to the validator (e.g., --port 8899)
-        #[clap(raw = true)]
+        /// Additional arguments to pass to the validator (e.g., --port 8899). Use `--` to terminate.
+        #[clap(long = "validator-args", num_args = 1.., value_terminator = "--")]
         validator_args: Vec<String>,
     },
     /// Creates a new program.
@@ -343,8 +345,8 @@ pub enum Command {
         /// Arguments to pass to the underlying `cargo build-sbf` command.
         #[clap(required = false, last = true)]
         cargo_args: Vec<String>,
-        /// Additional arguments to pass to the validator (e.g., --port 8899)
-        #[clap(raw = true)]
+        /// Additional arguments to pass to the validator (e.g., --port 8899). Use `--` to terminate.
+        #[clap(long = "validator-args", num_args = 1.., value_terminator = "--")]
         validator_args: Vec<String>,
     },
     /// Fetch and deserialize an account using the IDL provided.
@@ -2964,10 +2966,29 @@ fn test(
     validator_type: ValidatorTypeChoice,
     extra_args: Vec<String>,
     env_vars: Vec<String>,
-    cargo_args: Vec<String>,
+    mut cargo_args: Vec<String>,
     arch: ProgramArch,
-    validator_args: Vec<String>,
+    mut validator_args: Vec<String>,
 ) -> Result<()> {
+    // route them to Surfpool when no explicit --validator-args was provided.
+    if matches!(validator_type, ValidatorTypeChoice::Surfpool)
+        && validator_args.is_empty()
+        && cargo_args.iter().any(|s| s.starts_with('-'))
+    {
+        validator_args = std::mem::take(&mut cargo_args);
+    }
+
+    // Show Surfpool help if --help is present in validator_args
+    if matches!(validator_type, ValidatorTypeChoice::Surfpool) {
+        if validator_args.contains(&"--help".to_string()) {
+            let mut cmd = std::process::Command::new("surfpool");
+            cmd.arg("start");
+            cmd.args(&validator_args);
+            cmd.spawn()?.wait()?;
+            return Ok(());
+        }
+    }
+
     let test_paths = tests_to_run
         .iter()
         .map(|path| {
@@ -3048,6 +3069,7 @@ fn test(
             }
 
             run_test_suite(
+                cfg_override,
                 cfg,
                 cfg.path(),
                 is_localnet,
@@ -3077,6 +3099,7 @@ fn test(
                 }
 
                 run_test_suite(
+                    cfg_override,
                     cfg,
                     test_suite.0,
                     is_localnet,
@@ -3097,6 +3120,7 @@ fn test(
 
 #[allow(clippy::too_many_arguments)]
 fn run_test_suite(
+    cfg_override: &ConfigOverride,
     cfg: &WithPath<Config>,
     test_suite_path: impl AsRef<Path>,
     is_localnet: bool,
@@ -3128,6 +3152,11 @@ fn run_test_suite(
             validator_flags,
             true,
         )?);
+
+        // Ensure programs are deployed when booting a local validator
+        if !skip_deploy {
+            deploy(cfg_override, None, None, false, true, vec![])?;
+        }
     }
 
     let url = cluster_url(cfg, test_validator);
@@ -3454,9 +3483,10 @@ fn start_validator(
 }
 
 fn start_surfpool_validator(flags: Option<Vec<String>>) -> Result<Child> {
-    // Start surfpool validator - let Surfpool handle its own logging
     let mut cmd = std::process::Command::new("surfpool");
     cmd.arg("start");
+    cmd.arg("--no-tui");
+    cmd.arg("--no-deploy"); // no deploy the runbook on testing
 
     // Add any additional flags passed from CLI
     if let Some(flags) = flags {
@@ -4361,9 +4391,9 @@ fn localnet(
     skip_lint: bool,
     validator_type: ValidatorTypeChoice,
     env_vars: Vec<String>,
-    cargo_args: Vec<String>,
+    mut cargo_args: Vec<String>,
     arch: ProgramArch,
-    validator_args: Vec<String>,
+    mut validator_args: Vec<String>,
 ) -> Result<()> {
     with_workspace(cfg_override, |cfg| {
         // Set validator type based on CLI choice
@@ -4374,6 +4404,7 @@ fn localnet(
 
         // Build if needed.
         if !skip_build {
+            let cargo_args_for_build = cargo_args.clone();
             build(
                 cfg_override,
                 false,
@@ -4388,13 +4419,21 @@ fn localnet(
                 None,
                 None,
                 env_vars,
-                cargo_args,
+                cargo_args_for_build,
                 false,
                 arch,
             )?;
         }
 
         // For Surfpool, pass validator_args directly. For Solana, use legacy validator_flags
+        // route them to Surfpool when no explicit --validator-args was provided.
+        if matches!(validator_type, ValidatorTypeChoice::Surfpool)
+            && validator_args.is_empty()
+            && cargo_args.iter().any(|s| s.starts_with('-'))
+        {
+            validator_args = std::mem::take(&mut cargo_args);
+        }
+
         let validator_flags = match validator_type {
             ValidatorTypeChoice::Surfpool => Some(validator_args),
             ValidatorTypeChoice::Solana => {

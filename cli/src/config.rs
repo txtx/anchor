@@ -300,10 +300,12 @@ pub struct Config {
     pub test_config: Option<TestConfig>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(ValueEnum, Parser, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ValidatorType {
-    Solana,
+    /// Use Surfpool validator (default)
     Surfpool,
+    /// Use Solana test validator
+    Legacy,
 }
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct ToolchainConfig {
@@ -412,13 +414,6 @@ pub enum ProgramArch {
     Sbf,
 }
 
-#[derive(ValueEnum, Parser, Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ValidatorTypeChoice {
-    /// Use Surfpool validator (default)
-    Surfpool,
-    /// Use Solana test validator
-    Solana,
-}
 impl ProgramArch {
     pub fn build_subcommand(&self) -> &str {
         match self {

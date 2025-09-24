@@ -1,7 +1,7 @@
 use crate::config::{
     get_default_ledger_path, BootstrapMode, BuildConfig, Config, ConfigOverride, Manifest,
     PackageManager, ProgramArch, ProgramDeployment, ProgramWorkspace, ScriptsConfig, TestValidator,
-    ValidatorType, ValidatorTypeChoice, WithPath, SHUTDOWN_WAIT, STARTUP_WAIT,
+    ValidatorType, WithPath, SHUTDOWN_WAIT, STARTUP_WAIT,
 };
 use anchor_client::Cluster;
 use anchor_lang::idl::{IdlAccount, IdlInstruction, ERASED_AUTHORITY};
@@ -50,6 +50,7 @@ pub mod rust_template;
 // Version of the docker image.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const DOCKER_BUILDER_VERSION: &str = VERSION;
+pub const SURFPOOL_RPC_URL: &str = "http://127.0.0.1:8899";
 
 /// Default RPC port
 pub const DEFAULT_RPC_PORT: u16 = 8899;
@@ -219,7 +220,7 @@ pub enum Command {
         run: Vec<String>,
         /// Validator type to use for local testing
         #[clap(value_enum, long, default_value = "surfpool")]
-        validator: ValidatorTypeChoice,
+        validator: ValidatorType,
         /// Additional arguments to pass to the test runner (use `--` to terminate)
         #[clap(long = "args", num_args = 1.., value_terminator = "--")]
         args: Vec<String>,
@@ -229,7 +230,7 @@ pub enum Command {
         /// Arguments to pass to the underlying `cargo build-sbf` command.
         #[clap(required = false, last = true)]
         cargo_args: Vec<String>,
-        /// Additional arguments to pass to the validator (e.g., --port 8899). Use `--` to terminate.
+        /// Additional arguments to pass to the validator  to pass to the validator. Use `--` to pass the arguments e.g anchor test -- --port 8899.
         #[clap(long = "validator-args", num_args = 1.., value_terminator = "--")]
         validator_args: Vec<String>,
     },
@@ -338,14 +339,14 @@ pub enum Command {
         arch: ProgramArch,
         /// Validator type to use for local testing
         #[clap(value_enum, long, default_value = "surfpool")]
-        validator: ValidatorTypeChoice,
+        validator: ValidatorType,
         /// Environment variables to pass into the docker container
         #[clap(short, long, required = false)]
         env: Vec<String>,
         /// Arguments to pass to the underlying `cargo build-sbf` command.
         #[clap(required = false, last = true)]
         cargo_args: Vec<String>,
-        /// Additional arguments to pass to the validator (e.g., --port 8899). Use `--` to terminate.
+        /// Aditional arguments to foward to the validator. Use `--` to forward them. e.g anchor localnet -- --help.
         #[clap(long = "validator-args", num_args = 1.., value_terminator = "--")]
         validator_args: Vec<String>,
     },
@@ -2963,7 +2964,7 @@ fn test(
     no_idl: bool,
     detach: bool,
     tests_to_run: Vec<String>,
-    validator_type: ValidatorTypeChoice,
+    validator_type: ValidatorType,
     extra_args: Vec<String>,
     env_vars: Vec<String>,
     mut cargo_args: Vec<String>,
@@ -2971,7 +2972,7 @@ fn test(
     mut validator_args: Vec<String>,
 ) -> Result<()> {
     // route them to Surfpool when no explicit --validator-args was provided.
-    if matches!(validator_type, ValidatorTypeChoice::Surfpool)
+    if matches!(validator_type, ValidatorType::Surfpool)
         && validator_args.is_empty()
         && cargo_args.iter().any(|s| s.starts_with('-'))
     {
@@ -2979,7 +2980,7 @@ fn test(
     }
 
     // Show Surfpool help if --help is present in validator_args
-    if matches!(validator_type, ValidatorTypeChoice::Surfpool) {
+    if matches!(validator_type, ValidatorType::Surfpool) {
         if validator_args.contains(&"--help".to_string()) {
             let mut cmd = std::process::Command::new("surfpool");
             cmd.arg("start");
@@ -3000,10 +3001,7 @@ fn test(
 
     with_workspace(cfg_override, |cfg| {
         // Set validator type based on CLI choice
-        cfg.validator = Some(match validator_type {
-            ValidatorTypeChoice::Surfpool => ValidatorType::Surfpool,
-            ValidatorTypeChoice::Solana => ValidatorType::Solana,
-        });
+        cfg.validator = Some(validator_type);
 
         // Build if needed.
         if !skip_build {
@@ -3127,7 +3125,7 @@ fn run_test_suite(
     skip_local_validator: bool,
     skip_deploy: bool,
     detach: bool,
-    validator_type: ValidatorTypeChoice,
+    validator_type: ValidatorType,
     test_validator: &Option<TestValidator>,
     scripts: &ScriptsConfig,
     extra_args: &[String],
@@ -3139,8 +3137,8 @@ fn run_test_suite(
     if is_localnet && (!skip_local_validator) {
         // For Surfpool, pass validator_args directly. For Solana, use legacy validator_flags
         let validator_flags = match validator_type {
-            ValidatorTypeChoice::Surfpool => Some(validator_args),
-            ValidatorTypeChoice::Solana => match skip_deploy {
+            ValidatorType::Surfpool => Some(validator_args),
+            ValidatorType::Legacy => match skip_deploy {
                 true => None,
                 false => Some(validator_flags(cfg, test_validator)?),
             },
@@ -3410,7 +3408,7 @@ fn stream_logs(config: &WithPath<Config>, rpc_url: &str) -> Result<Vec<std::proc
             println!("Surfpool validator logs: .surfpool/logs/ directory");
             Ok(vec![])
         }
-        Some(ValidatorType::Solana) | None => stream_solana_logs(config, rpc_url),
+        Some(ValidatorType::Legacy) | None => stream_solana_logs(config, rpc_url),
     }
 }
 
@@ -3469,14 +3467,14 @@ fn stream_solana_logs(
 
 fn start_validator(
     cfg: &Config,
-    validator_type: ValidatorTypeChoice,
+    validator_type: ValidatorType,
     test_validator: &Option<TestValidator>,
     flags: Option<Vec<String>>,
     test_log_stdout: bool,
 ) -> Result<Child> {
     match validator_type {
-        ValidatorTypeChoice::Surfpool => start_surfpool_validator(flags),
-        ValidatorTypeChoice::Solana => {
+        ValidatorType::Surfpool => start_surfpool_validator(flags),
+        ValidatorType::Legacy => {
             start_solana_validator(cfg, test_validator, flags, test_log_stdout)
         }
     }
@@ -3499,7 +3497,7 @@ fn start_surfpool_validator(flags: Option<Vec<String>>) -> Result<Child> {
 
     // Wait for the validator to be ready.
     // Use default Surfpool RPC URL
-    let rpc_url = "http://127.0.0.1:8899".to_string();
+    let rpc_url = SURFPOOL_RPC_URL.to_string();
     let client = create_client(rpc_url);
     let mut count = 0;
     let ms_wait = STARTUP_WAIT;
@@ -3648,8 +3646,8 @@ fn cluster_url(cfg: &Config, test_validator: &Option<TestValidator>) -> String {
     match is_localnet {
         // Cluster is Localnet, determine which validator to use
         true => match &cfg.validator {
-            Some(ValidatorType::Surfpool) => "http://127.0.0.1:8899".to_string(),
-            Some(ValidatorType::Solana) | None => test_validator_rpc_url(test_validator),
+            Some(ValidatorType::Surfpool) => SURFPOOL_RPC_URL.to_string(),
+            Some(ValidatorType::Legacy) | None => test_validator_rpc_url(test_validator),
         },
         false => cfg.provider.cluster.url().to_string(),
     }
@@ -4346,7 +4344,7 @@ fn localnet(
     skip_build: bool,
     skip_deploy: bool,
     skip_lint: bool,
-    validator_type: ValidatorTypeChoice,
+    validator_type: ValidatorType,
     env_vars: Vec<String>,
     mut cargo_args: Vec<String>,
     arch: ProgramArch,
@@ -4354,10 +4352,7 @@ fn localnet(
 ) -> Result<()> {
     with_workspace(cfg_override, |cfg| {
         // Set validator type based on CLI choice
-        cfg.validator = Some(match validator_type {
-            ValidatorTypeChoice::Surfpool => ValidatorType::Surfpool,
-            ValidatorTypeChoice::Solana => ValidatorType::Solana,
-        });
+        cfg.validator = Some(validator_type);
 
         // Build if needed.
         if !skip_build {
@@ -4384,7 +4379,7 @@ fn localnet(
 
         // For Surfpool, pass validator_args directly. For Solana, use legacy validator_flags
         // route them to Surfpool when no explicit --validator-args was provided.
-        if matches!(validator_type, ValidatorTypeChoice::Surfpool)
+        if matches!(validator_type, ValidatorType::Surfpool)
             && validator_args.is_empty()
             && cargo_args.iter().any(|s| s.starts_with('-'))
         {
@@ -4392,8 +4387,8 @@ fn localnet(
         }
 
         let validator_flags = match validator_type {
-            ValidatorTypeChoice::Surfpool => Some(validator_args),
-            ValidatorTypeChoice::Solana => {
+            ValidatorType::Surfpool => Some(validator_args),
+            ValidatorType::Legacy => {
                 if skip_deploy {
                     None
                 } else {

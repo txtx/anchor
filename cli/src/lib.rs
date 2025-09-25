@@ -3102,9 +3102,9 @@ fn run_test_suite(
             if is_localnet && (!skip_local_validator) {
                 let flags = match skip_deploy {
                     true => None,
-                    false => Some(surfpool_flags(cfg, surfpool_config)?),
+                    false => Some(surfpool_flags(cfg, surfpool_config, false)?),
                 };
-                validator_handle = Some(start_surfpool_validator(flags, surfpool_config, false)?);
+                validator_handle = Some(start_surfpool_validator(flags, surfpool_config)?);
             }
         }
         ValidatorType::Legacy => {
@@ -3368,6 +3368,7 @@ fn validator_flags(
 fn surfpool_flags(
     cfg: &WithPath<Config>,
     surfpool_config: &Option<SurfpoolConfig>,
+    tui: bool,
 ) -> Result<Vec<String>> {
     let programs = cfg.programs.get(&Cluster::Localnet);
     let mut flags = Vec::new();
@@ -3416,6 +3417,9 @@ fn surfpool_flags(
             flags.push("--offline-mode".to_string());
             flags.push(offline_mode.to_string());
         }
+    }
+    if !tui {
+        flags.push("--no-tui".to_string());
     }
     Ok(flags)
 }
@@ -3489,17 +3493,15 @@ fn stream_solana_logs(
 fn start_surfpool_validator(
     flags: Option<Vec<String>>,
     surfpool_config: &Option<SurfpoolConfig>,
-    tui: bool,
 ) -> Result<Child> {
     let rpc_url = surfpool_rpc_url(surfpool_config);
     let mut validator_handle = std::process::Command::new("surfpool")
         .arg("start")
-        .arg(if tui { "--tui" } else { "--no-tui" })
         .args(flags.unwrap_or_default())
         .spawn()
         .map_err(|e| anyhow!("Failed to spawn `surfpool`: {e}"))?;
 
-    let client = create_client(rpc_url);
+    let client = create_client(rpc_url.clone());
 
     let mut count = 0;
 
@@ -3517,6 +3519,57 @@ fn start_surfpool_validator(
         count += 100;
     }
 
+    let mut runbook_completed = false;
+
+    while !runbook_completed {
+        let rpc_request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "surfnet_getSurfnetInfo"
+        });
+
+        let http_client = reqwest::blocking::Client::new();
+
+        match http_client
+            .post(&rpc_url)
+            .header("Content-Type", "application/json")
+            .json(&rpc_request)
+            .send()
+        {
+            Ok(response) => {
+                if response.status().is_success() {
+                    match response.json::<serde_json::Value>() {
+                        Ok(data) => {
+                            if let Some(runbook_executions) =
+                                data.get("result").and_then(|result| {
+                                    result.get("value").and_then(|value| {
+                                        value.get("runbookExecutions").and_then(
+                                            |runbook_executions| runbook_executions.as_array(),
+                                        )
+                                    })
+                                })
+                            {
+                                if runbook_executions[0]
+                                    .get("completedAt")
+                                    .map_or(false, |v| !v.is_null())
+                                {
+                                    eprintln!("found runbook execution completed");
+                                    runbook_completed = true;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to parse response from Surfpool: {e}");
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to send request to Surfpool: {e}");
+                break;
+            }
+        }
+    }
     if count >= ms_wait {
         eprintln!(
             "Unable to get latest blockhash. Surfpool validator does not look started. \
@@ -4439,9 +4492,9 @@ fn localnet(
             ValidatorType::Surfpool => {
                 let flags = match skip_deploy {
                     true => None,
-                    false => Some(surfpool_flags(cfg, &cfg.surfpool_config)?),
+                    false => Some(surfpool_flags(cfg, &cfg.surfpool_config, true)?),
                 };
-                Some(start_surfpool_validator(flags, &cfg.surfpool_config, true)?)
+                Some(start_surfpool_validator(flags, &cfg.surfpool_config)?)
             }
             ValidatorType::Legacy => {
                 let flags = match skip_deploy {

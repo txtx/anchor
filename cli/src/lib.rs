@@ -3104,7 +3104,7 @@ fn run_test_suite(
                     true => None,
                     false => Some(surfpool_flags(cfg, surfpool_config)?),
                 };
-                validator_handle = Some(start_surfpool_validator(flags, surfpool_config)?);
+                validator_handle = Some(start_surfpool_validator(flags, surfpool_config, false)?);
             }
         }
         ValidatorType::Legacy => {
@@ -3113,7 +3113,12 @@ fn run_test_suite(
                     true => None,
                     false => Some(validator_flags(cfg, test_validator)?),
                 };
-                validator_handle = Some(start_solana_validator(cfg, test_validator, flags, true)?);
+                validator_handle = Some(start_solana_test_validator(
+                    cfg,
+                    test_validator,
+                    flags,
+                    true,
+                )?);
             }
         }
     }
@@ -3484,12 +3489,12 @@ fn stream_solana_logs(
 fn start_surfpool_validator(
     flags: Option<Vec<String>>,
     surfpool_config: &Option<SurfpoolConfig>,
+    tui: bool,
 ) -> Result<Child> {
     let rpc_url = surfpool_rpc_url(surfpool_config);
-
     let mut validator_handle = std::process::Command::new("surfpool")
         .arg("start")
-        .arg("--no-tui")
+        .arg(if tui { "--tui" } else { "--no-tui" })
         .args(flags.unwrap_or_default())
         .spawn()
         .map_err(|e| anyhow!("Failed to spawn `surfpool`: {e}"))?;
@@ -3523,7 +3528,7 @@ fn start_surfpool_validator(
     Ok(validator_handle)
 }
 
-fn start_solana_validator(
+fn start_solana_test_validator(
     cfg: &Config,
     test_validator: &Option<TestValidator>,
     flags: Option<Vec<String>>,
@@ -4430,28 +4435,27 @@ fn localnet(
             )?;
         }
 
-        let mut validator_handle = None;
-        match validator_type {
+        let validator_handle = match validator_type {
             ValidatorType::Surfpool => {
                 let flags = match skip_deploy {
                     true => None,
                     false => Some(surfpool_flags(cfg, &cfg.surfpool_config)?),
                 };
-                validator_handle = Some(start_surfpool_validator(flags, &cfg.surfpool_config)?);
+                Some(start_surfpool_validator(flags, &cfg.surfpool_config, true)?)
             }
             ValidatorType::Legacy => {
                 let flags = match skip_deploy {
                     true => None,
                     false => Some(validator_flags(cfg, &cfg.test_validator)?),
                 };
-                validator_handle = Some(start_solana_validator(
+                Some(start_solana_test_validator(
                     cfg,
                     &cfg.test_validator,
                     flags,
                     false,
-                )?);
+                )?)
             }
-        }
+        };
 
         // Setup log reader.
         let url = test_validator_rpc_url(&cfg.test_validator);

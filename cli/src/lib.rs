@@ -3553,7 +3553,6 @@ fn start_surfpool_validator(
                                     .get("completedAt")
                                     .map_or(false, |v| !v.is_null())
                                 {
-                                    eprintln!("found runbook execution completed");
                                     runbook_completed = true;
                                 }
                             }

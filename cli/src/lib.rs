@@ -3548,21 +3548,46 @@ fn start_surfpool_validator(
             value
                 .get("runbookExecutions")
                 .and_then(|runbook_executions| {
-                    runbook_executions.as_array().map(|array| {
+                    runbook_executions.as_array().and_then(|array| {
                         array
                             .iter()
-                            .map(|item| {
-                                serde_json::from_value::<RunbookExecution>(item.clone()).unwrap()
-                            })
-                            .collect::<Vec<RunbookExecution>>()
+                            .map(|item| serde_json::from_value::<RunbookExecution>(item.clone()))
+                            .collect::<Result<Vec<RunbookExecution>, _>>()
+                            .ok()
                     })
                 })
         }) {
             if !runbook_executions.is_empty() {
-                let all_completed = runbook_executions
-                    .iter()
-                    .all(|execution| execution.completed_at.is_some());
-                if all_completed {
+                let all_completed_or_failed = runbook_executions.iter().all(|execution| {
+                    // Consider it "done" if it's completed OR has errors
+                    // Avoiding keeping it running forever waiting for the runbook to complete
+                    execution.completed_at.is_some()
+                        || execution
+                            .errors
+                            .as_ref()
+                            .map_or(false, |errors| !errors.is_empty())
+                });
+
+                if all_completed_or_failed {
+                    // Check if any failed
+                    let has_failures = runbook_executions.iter().any(|execution| {
+                        execution
+                            .errors
+                            .as_ref()
+                            .map_or(false, |errors| !errors.is_empty())
+                    });
+
+                    if has_failures {
+                        for execution in &runbook_executions {
+                            if let Some(errors) = &execution.errors {
+                                if !errors.is_empty() {
+                                    println!("Runbook '{}': {:?}", execution.runbook_id, errors);
+                                }
+                            }
+                        }
+                        bail!("Runbook execution failed");
+                    }
+
                     runbook_completed = true;
                 }
             }

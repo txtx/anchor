@@ -749,7 +749,7 @@ pub struct SurfpoolConfig {
     pub host: String,
     pub offline_mode: Option<bool>,
     pub remote_rpc_url: Option<String>,
-    pub airdrop_addresses: Option<Vec<Pubkey>>,
+    pub airdrop_addresses: Option<Vec<String>>,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -783,7 +783,7 @@ pub struct _SurfpoolConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remote_rpc_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub airdrop_addresses: Option<Vec<Pubkey>>,
+    pub airdrop_addresses: Option<Vec<String>>,
 }
 
 impl From<_SurfpoolConfig> for SurfpoolConfig {
@@ -796,7 +796,12 @@ impl From<_SurfpoolConfig> for SurfpoolConfig {
             ws_port: _surfpool_config.ws_port,
             offline_mode: _surfpool_config.offline_mode,
             remote_rpc_url: _surfpool_config.remote_rpc_url,
-            airdrop_addresses: _surfpool_config.airdrop_addresses,
+            airdrop_addresses: _surfpool_config.airdrop_addresses.map(|addresses| {
+                addresses
+                    .into_iter()
+                    .map(|address| address.to_string())
+                    .collect()
+            }),
         }
     }
 }
@@ -811,7 +816,12 @@ impl From<SurfpoolConfig> for _SurfpoolConfig {
             host: Some(surfpool_config.host),
             offline_mode: surfpool_config.offline_mode,
             remote_rpc_url: surfpool_config.remote_rpc_url,
-            airdrop_addresses: surfpool_config.airdrop_addresses,
+            airdrop_addresses: surfpool_config.airdrop_addresses.map(|addresses| {
+                addresses
+                    .into_iter()
+                    .map(|address| address.parse().unwrap())
+                    .collect()
+            }),
         }
     }
 }
@@ -1430,6 +1440,17 @@ impl AnchorPackage {
         let address = program_details.address.to_string();
         Ok(Self { name, address, idl })
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RunbookExecution {
+    #[serde(rename = "startedAt")]
+    pub started_at: u32,
+    #[serde(rename = "completedAt")]
+    pub completed_at: Option<u32>,
+    #[serde(rename = "runbookId")]
+    pub runbook_id: String,
+    pub errors: Option<Vec<String>>,
 }
 
 #[macro_export]

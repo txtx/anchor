@@ -15,8 +15,9 @@ runs:
     - uses: nick-fields/retry@v2
       if: steps.cache-surfpool.outputs.cache-hit != 'true'
       with:
-        max_attempts: 5
-        retry_wait_seconds: 60
+        retry_wait_seconds: 300
+        timeout_minutes: 2
+        max_attempts: 10
         retry_on: error
         shell: bash
         command: |

@@ -1,7 +1,7 @@
 use crate::config::{
     get_default_ledger_path, BootstrapMode, BuildConfig, Config, ConfigOverride, Manifest,
-    PackageManager, ProgramArch, ProgramDeployment, ProgramWorkspace, RunbookExecution,
-    ScriptsConfig, SurfpoolConfig, TestValidator, ValidatorType, WithPath, SHUTDOWN_WAIT,
+    PackageManager, ProgramArch, ProgramDeployment, ProgramWorkspace, ScriptsConfig,
+    SurfnetInfoResponse, SurfpoolConfig, TestValidator, ValidatorType, WithPath, SHUTDOWN_WAIT,
     STARTUP_WAIT, SURFPOOL_RPC_URL,
 };
 use anchor_client::Cluster;
@@ -25,6 +25,7 @@ use semver::{Version, VersionReq};
 use serde_json::{json, Map, Value as JsonValue};
 use solana_rpc_client::rpc_client::RpcClient;
 use solana_rpc_client_api::request::RpcRequest;
+use solana_rpc_client_api::response::Response;
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::compute_budget::ComputeBudgetInstruction;
 use solana_sdk::instruction::{AccountMeta, Instruction};
@@ -3534,68 +3535,25 @@ fn start_surfpool_validator(
         std::process::exit(1);
     }
 
-    let mut runbook_completed = false;
+    loop {
+        let resp = client
+            .send::<Response<SurfnetInfoResponse>>(
+                RpcRequest::Custom {
+                    method: "surfnet_getSurfnetInfo",
+                },
+                serde_json::Value::Null,
+            )?
+            .value;
 
-    while !runbook_completed {
-        let data = client.send::<serde_json::Value>(
-            RpcRequest::Custom {
-                method: "surfnet_getSurfnetInfo",
-            },
-            serde_json::Value::Null,
-        )?;
-
-        if let Some(runbook_executions) = data.get("value").and_then(|value| {
-            value
-                .get("runbookExecutions")
-                .and_then(|runbook_executions| {
-                    runbook_executions.as_array().and_then(|array| {
-                        array
-                            .iter()
-                            .map(|item| serde_json::from_value::<RunbookExecution>(item.clone()))
-                            .collect::<Result<Vec<RunbookExecution>, _>>()
-                            .ok()
-                    })
-                })
-        }) {
-            if !runbook_executions.is_empty() {
-                let all_completed_or_failed = runbook_executions.iter().all(|execution| {
-                    // Consider it "done" if it's completed OR has errors
-                    // Avoiding keeping it running forever waiting for the runbook to complete
-                    execution.completed_at.is_some()
-                        || execution
-                            .errors
-                            .as_ref()
-                            .map_or(false, |errors| !errors.is_empty())
-                });
-
-                if all_completed_or_failed {
-                    // Check if any failed
-                    let has_failures = runbook_executions.iter().any(|execution| {
-                        execution
-                            .errors
-                            .as_ref()
-                            .map_or(false, |errors| !errors.is_empty())
-                    });
-
-                    if has_failures {
-                        for execution in &runbook_executions {
-                            if let Some(errors) = &execution.errors {
-                                if !errors.is_empty() {
-                                    println!("Runbook '{}': {:?}", execution.runbook_id, errors);
-                                }
-                            }
-                        }
-                        bail!("Runbook execution failed");
-                    }
-
-                    runbook_completed = true;
-                }
-            }
+        // break out if all runbooks are completed
+        if resp
+            .runbook_executions
+            .iter()
+            .all(|ex| ex.completed_at.is_some())
+        {
+            break;
         }
-
-        if !runbook_completed {
-            std::thread::sleep(std::time::Duration::from_secs(1));
-        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
     }
     Ok(validator_handle)
 }

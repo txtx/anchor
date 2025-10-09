@@ -1443,6 +1443,12 @@ impl AnchorPackage {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SurfnetInfoResponse {
+    pub runbook_executions: Vec<RunbookExecution>,
+}
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RunbookExecution {
     #[serde(rename = "startedAt")]
     pub started_at: u32,

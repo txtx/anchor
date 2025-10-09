@@ -2,7 +2,7 @@ use crate::config::{
     get_default_ledger_path, BootstrapMode, BuildConfig, Config, ConfigOverride, Manifest,
     PackageManager, ProgramArch, ProgramDeployment, ProgramWorkspace, ScriptsConfig,
     SurfnetInfoResponse, SurfpoolConfig, TestValidator, ValidatorType, WithPath, SHUTDOWN_WAIT,
-    STARTUP_WAIT, SURFPOOL_RPC_URL,
+    STARTUP_WAIT, SURFPOOL_HOST,
 };
 use anchor_client::Cluster;
 use anchor_lang::idl::{IdlAccount, IdlInstruction, ERASED_AUTHORITY};
@@ -3694,7 +3694,7 @@ fn test_validator_rpc_url(test_validator: &Option<TestValidator>) -> String {
 fn surfpool_rpc_url(surfpool_config: &Option<SurfpoolConfig>) -> String {
     match surfpool_config {
         Some(SurfpoolConfig { host, rpc_port, .. }) => format!("http://{}:{}", host, rpc_port),
-        _ => SURFPOOL_RPC_URL.to_string(),
+        _ => format!("http://{}:{}", SURFPOOL_HOST, DEFAULT_RPC_PORT),
     }
 }
 

@@ -25,7 +25,6 @@ use std::str::FromStr;
 use std::{fmt, io};
 use walkdir::WalkDir;
 
-pub const SURFPOOL_RPC_URL: &str = "http://127.0.0.1:8899";
 pub const SURFPOOL_HOST: &str = "127.0.0.1";
 
 pub trait Merge: Sized {

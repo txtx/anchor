@@ -3444,6 +3444,14 @@ fn surfpool_flags(
         }
     }
 
+    flags.push("--log-level".to_string());
+    flags.push(
+        surfpool_config
+            .as_ref()
+            .and_then(|c| c.log_level.clone())
+            .unwrap_or("none".into()),
+    );
+
     if !full_simnet_mode {
         flags.push("--no-tui".to_string());
         flags.push("--disable-instruction-profiling".to_string());

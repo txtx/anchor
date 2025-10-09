@@ -747,7 +747,7 @@ pub struct SurfpoolConfig {
     pub ws_port: Option<u16>,
     pub host: String,
     pub online: Option<bool>,
-    pub remote_rpc_url: Option<String>,
+    pub datasource_rpc_url: Option<String>,
     pub airdrop_addresses: Option<Vec<String>>,
     pub manifest_file_path: Option<String>,
     pub runbooks: Option<Vec<String>>,
@@ -783,7 +783,7 @@ pub struct _SurfpoolConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub online: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub remote_rpc_url: Option<String>,
+    pub datasource_rpc_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub airdrop_addresses: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -803,7 +803,7 @@ impl From<_SurfpoolConfig> for SurfpoolConfig {
             host: _surfpool_config.host.unwrap_or(SURFPOOL_HOST.to_string()),
             ws_port: _surfpool_config.ws_port,
             online: _surfpool_config.online,
-            remote_rpc_url: _surfpool_config.remote_rpc_url,
+            datasource_rpc_url: _surfpool_config.datasource_rpc_url,
             airdrop_addresses: _surfpool_config.airdrop_addresses,
             manifest_file_path: _surfpool_config.manifest_file_path,
             runbooks: _surfpool_config.runbooks,
@@ -821,7 +821,7 @@ impl From<SurfpoolConfig> for _SurfpoolConfig {
             ws_port: surfpool_config.ws_port,
             host: Some(surfpool_config.host),
             online: surfpool_config.online,
-            remote_rpc_url: surfpool_config.remote_rpc_url,
+            datasource_rpc_url: surfpool_config.datasource_rpc_url,
             airdrop_addresses: surfpool_config.airdrop_addresses,
             manifest_file_path: surfpool_config.manifest_file_path,
             runbooks: surfpool_config.runbooks,

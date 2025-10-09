@@ -3403,9 +3403,9 @@ fn surfpool_flags(
                 flags.push(address.to_string());
             }
         }
-        if let Some(remote_rpc_url) = &config.remote_rpc_url {
+        if let Some(datasource_rpc_url) = &config.datasource_rpc_url {
             flags.push("--rpc-url".to_string());
-            flags.push(remote_rpc_url.to_string());
+            flags.push(datasource_rpc_url.to_string());
         }
 
         let host = &config.host;

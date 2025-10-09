@@ -3,7 +3,6 @@ description: "Installs and caches the Surfpool CLI"
 runs:
   using: "composite"
   steps:
-    # 1️⃣ Cache the Surfpool binary
     - uses: actions/cache@v3
       name: Cache Surfpool Binary
       id: cache-surfpool
@@ -11,7 +10,6 @@ runs:
         path: /usr/local/bin/surfpool
         key: surfpool-${{ runner.os }}-v${{ env.SURFPOOL_VERSION }}
 
-    # 2️⃣ Install Surfpool (only if not cached)
     - uses: nick-fields/retry@v2
       if: steps.cache-surfpool.outputs.cache-hit != 'true'
       with:
@@ -24,6 +22,3 @@ runs:
           echo "Installing Surfpool version ${{ env.SURFPOOL_VERSION }}"
           curl -sL https://run.surfpool.run/ | sudo bash
 
-    # 3️⃣ Verify installation
-    - run: surfpool --version
-      shell: bash

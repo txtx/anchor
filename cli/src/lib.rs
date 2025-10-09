@@ -4478,6 +4478,7 @@ fn keys_sync(cfg_override: &ConfigOverride, program_name: Option<String>) -> Res
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn localnet(
     cfg_override: &ConfigOverride,
     skip_build: bool,

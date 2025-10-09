@@ -3538,7 +3538,7 @@ fn start_surfpool_validator(
         false => (Stdio::null(), Stdio::null()),
     };
 
-    let mut validator_handle = std::process::Command::new("/Users/micaiahreid/.cargo/bin/surfpool")
+    let mut validator_handle = std::process::Command::new("surfpool")
         .arg("start")
         .args(flags.unwrap_or_default())
         .stdout(test_validator_stdout)

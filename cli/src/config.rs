@@ -526,7 +526,7 @@ struct _Config {
     workspace: Option<WorkspaceConfig>,
     scripts: Option<ScriptsConfig>,
     test: Option<_TestValidator>,
-    surfpool_config: Option<_SurfpoolConfig>,
+    surfpool: Option<_SurfpoolConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -627,7 +627,7 @@ impl fmt::Display for Config {
             programs,
             workspace: (!self.workspace.members.is_empty() || !self.workspace.exclude.is_empty())
                 .then(|| self.workspace.clone()),
-            surfpool_config: self.surfpool_config.clone().map(Into::into),
+            surfpool: self.surfpool_config.clone().map(Into::into),
         };
 
         let cfg = toml::to_string(&cfg).expect("Must be well formed");
@@ -655,7 +655,7 @@ impl FromStr for Config {
             test_config: None,
             programs: cfg.programs.map_or(Ok(BTreeMap::new()), deser_programs)?,
             workspace: cfg.workspace.unwrap_or_default(),
-            surfpool_config: cfg.surfpool_config.map(Into::into),
+            surfpool_config: cfg.surfpool.map(Into::into),
         })
     }
 }
@@ -747,9 +747,12 @@ pub struct SurfpoolConfig {
     pub rpc_port: u16,
     pub ws_port: Option<u16>,
     pub host: String,
-    pub offline_mode: Option<bool>,
+    pub online: Option<bool>,
     pub remote_rpc_url: Option<String>,
     pub airdrop_addresses: Option<Vec<String>>,
+    pub manifest_file_path: Option<String>,
+    pub runbooks: Option<Vec<String>>,
+    pub slot_time: Option<u16>,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -779,11 +782,17 @@ pub struct _SurfpoolConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub host: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub offline_mode: Option<bool>,
+    pub online: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remote_rpc_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub airdrop_addresses: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manifest_file_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runbooks: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slot_time: Option<u16>,
 }
 
 impl From<_SurfpoolConfig> for SurfpoolConfig {
@@ -794,14 +803,12 @@ impl From<_SurfpoolConfig> for SurfpoolConfig {
             rpc_port: _surfpool_config.rpc_port.unwrap_or(8899),
             host: _surfpool_config.host.unwrap_or(SURFPOOL_HOST.to_string()),
             ws_port: _surfpool_config.ws_port,
-            offline_mode: _surfpool_config.offline_mode,
+            online: _surfpool_config.online,
             remote_rpc_url: _surfpool_config.remote_rpc_url,
-            airdrop_addresses: _surfpool_config.airdrop_addresses.map(|addresses| {
-                addresses
-                    .into_iter()
-                    .map(|address| address.to_string())
-                    .collect()
-            }),
+            airdrop_addresses: _surfpool_config.airdrop_addresses,
+            manifest_file_path: _surfpool_config.manifest_file_path,
+            runbooks: _surfpool_config.runbooks,
+            slot_time: _surfpool_config.slot_time,
         }
     }
 }
@@ -814,14 +821,12 @@ impl From<SurfpoolConfig> for _SurfpoolConfig {
             rpc_port: Some(surfpool_config.rpc_port),
             ws_port: surfpool_config.ws_port,
             host: Some(surfpool_config.host),
-            offline_mode: surfpool_config.offline_mode,
+            online: surfpool_config.online,
             remote_rpc_url: surfpool_config.remote_rpc_url,
-            airdrop_addresses: surfpool_config.airdrop_addresses.map(|addresses| {
-                addresses
-                    .into_iter()
-                    .map(|address| address.parse().unwrap())
-                    .collect()
-            }),
+            airdrop_addresses: surfpool_config.airdrop_addresses,
+            manifest_file_path: surfpool_config.manifest_file_path,
+            runbooks: surfpool_config.runbooks,
+            slot_time: surfpool_config.slot_time,
         }
     }
 }

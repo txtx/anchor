@@ -3102,8 +3102,18 @@ fn run_test_suite(
     if is_localnet && !skip_local_validator {
         match validator_type {
             ValidatorType::Surfpool => {
-                let flags = Some(surfpool_flags(cfg, surfpool_config, false, skip_deploy)?);
-                validator_handle = Some(start_surfpool_validator(flags, surfpool_config)?);
+                let full_simnet_mode = false;
+                let flags = Some(surfpool_flags(
+                    cfg,
+                    surfpool_config,
+                    full_simnet_mode,
+                    skip_deploy,
+                )?);
+                validator_handle = Some(start_surfpool_validator(
+                    flags,
+                    surfpool_config,
+                    full_simnet_mode,
+                )?);
             }
             ValidatorType::Legacy => {
                 let flags = match skip_deploy {
@@ -3411,10 +3421,29 @@ fn surfpool_flags(
             flags.push(ws_port.to_string());
         }
 
-        if let Some(_) = &config.offline_mode {
+        let online = config.online.unwrap_or(false);
+        if !online {
             flags.push("--offline".to_string());
         }
+
+        if let Some(manifest_file_path) = &config.manifest_file_path {
+            flags.push("--manifest-file-path".to_string());
+            flags.push(manifest_file_path.to_string());
+        }
+
+        if let Some(runbooks) = &config.runbooks {
+            for runbook in runbooks {
+                flags.push("--runbook".to_string());
+                flags.push(runbook.to_string());
+            }
+        }
+
+        if let Some(slot_time) = &config.slot_time {
+            flags.push("--slot-time".to_string());
+            flags.push(slot_time.to_string());
+        }
     }
+
     if !full_simnet_mode {
         flags.push("--no-tui".to_string());
         flags.push("--disable-instruction-profiling".to_string());
@@ -3425,7 +3454,7 @@ fn surfpool_flags(
 
     match skip_deploy {
         true => flags.push("--no-deploy".to_string()),
-        false => flags.push("--yes".to_string()), // automatically generate runbooks
+        false => flags.push("--autopilot".to_string()), // automatically generate in-memory runbooks
     }
 
     Ok(flags)
@@ -3500,11 +3529,20 @@ fn stream_solana_logs(
 fn start_surfpool_validator(
     flags: Option<Vec<String>>,
     surfpool_config: &Option<SurfpoolConfig>,
+    full_simnet_mode: bool,
 ) -> Result<Child> {
     let rpc_url = surfpool_rpc_url(surfpool_config);
-    let mut validator_handle = std::process::Command::new("surfpool")
+
+    let (test_validator_stdout, test_validator_stderr) = match full_simnet_mode {
+        true => (Stdio::inherit(), Stdio::inherit()),
+        false => (Stdio::null(), Stdio::null()),
+    };
+
+    let mut validator_handle = std::process::Command::new("/Users/micaiahreid/.cargo/bin/surfpool")
         .arg("start")
         .args(flags.unwrap_or_default())
+        .stdout(test_validator_stdout)
+        .stderr(test_validator_stderr)
         .spawn()
         .map_err(|e| anyhow!("Failed to spawn `surfpool`: {e}"))?;
 
@@ -4465,15 +4503,20 @@ fn localnet(
             )?;
         }
 
-        let validator_handle = match validator_type {
+        let validator_handle: Option<Child> = match validator_type {
             ValidatorType::Surfpool => {
+                let full_simnet_mode = true;
                 let flags = Some(surfpool_flags(
                     cfg,
                     &cfg.surfpool_config,
-                    true,
+                    full_simnet_mode,
                     skip_deploy,
                 )?);
-                Some(start_surfpool_validator(flags, &cfg.surfpool_config)?)
+                Some(start_surfpool_validator(
+                    flags,
+                    &cfg.surfpool_config,
+                    full_simnet_mode,
+                )?)
             }
             ValidatorType::Legacy => {
                 let flags = match skip_deploy {

@@ -799,7 +799,7 @@ impl From<_SurfpoolConfig> for SurfpoolConfig {
         Self {
             startup_wait: _surfpool_config.startup_wait.unwrap_or(STARTUP_WAIT),
             shutdown_wait: _surfpool_config.shutdown_wait.unwrap_or(SHUTDOWN_WAIT),
-            rpc_port: _surfpool_config.rpc_port.unwrap_or(8899),
+            rpc_port: _surfpool_config.rpc_port.unwrap_or(DEFAULT_RPC_PORT),
             host: _surfpool_config.host.unwrap_or(SURFPOOL_HOST.to_string()),
             ws_port: _surfpool_config.ws_port,
             online: _surfpool_config.online,

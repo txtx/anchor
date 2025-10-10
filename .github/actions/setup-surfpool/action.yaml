@@ -8,7 +8,7 @@ runs:
       id: cache-surfpool
       with:
         path: /usr/local/bin/surfpool
-        key: surfpool-${{ runner.os }}-v${{ env.SURFPOOL_VERSION }}
+        key: surfpool-${{ runner.os }}-v${{ env.SURFPOOL_CLI_VERSION }}
 
     - uses: nick-fields/retry@v2
       if: steps.cache-surfpool.outputs.cache-hit != 'true'
@@ -19,6 +19,6 @@ runs:
         retry_on: error
         shell: bash
         command: |
-          echo "Installing Surfpool version ${{ env.SURFPOOL_VERSION }}"
+          echo "Installing Surfpool version ${{ env.SURFPOOL_CLI_VERSION }}"
           curl -sL https://run.surfpool.run/ | sudo bash
 

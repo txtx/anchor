@@ -3421,11 +3421,6 @@ fn surfpool_flags(
             flags.push(ws_port.to_string());
         }
 
-        let online = config.online.unwrap_or(false);
-        if !online {
-            flags.push("--offline".to_string());
-        }
-
         if let Some(manifest_file_path) = &config.manifest_file_path {
             flags.push("--manifest-file-path".to_string());
             flags.push(manifest_file_path.to_string());
@@ -3442,6 +3437,14 @@ fn surfpool_flags(
             flags.push("--slot-time".to_string());
             flags.push(slot_time.to_string());
         }
+    }
+
+    let online = surfpool_config
+        .as_ref()
+        .and_then(|c| c.online)
+        .unwrap_or(false);
+    if !online {
+        flags.push("--offline".to_string());
     }
 
     flags.push("--log-level".to_string());

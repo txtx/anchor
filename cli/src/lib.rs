@@ -3477,7 +3477,18 @@ fn stream_logs(config: &WithPath<Config>, rpc_url: &str) -> Result<Vec<std::proc
         Some(ValidatorType::Surfpool) => {
             // For Surfpool, we don't need to stream logs via external commands
             // Surfpool handles its own logging to .surfpool/logs/ directory
-            println!("Surfpool validator logs: .surfpool/logs/ directory");
+            if config
+                .surfpool_config
+                .as_ref()
+                .and_then(|s| {
+                    s.log_level
+                        .as_ref()
+                        .map(|l| l.to_ascii_lowercase().eq("none"))
+                })
+                .unwrap_or(true)
+            {
+                println!("Surfpool validator logs: .surfpool/logs/ directory");
+            }
             Ok(vec![])
         }
         Some(ValidatorType::Legacy) | None => stream_solana_logs(config, rpc_url),

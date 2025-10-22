@@ -3108,6 +3108,7 @@ fn run_test_suite(
                     surfpool_config,
                     full_simnet_mode,
                     skip_deploy,
+                    Some(test_suite_path.as_ref()),
                 )?);
                 validator_handle = Some(start_surfpool_validator(
                     flags,
@@ -3152,6 +3153,7 @@ fn run_test_suite(
             .expect("Not able to find script for `test`")
             .clone();
         let script_args = format!("{cmd} {}", extra_args.join(" "));
+
         std::process::Command::new("bash")
             .arg("-c")
             .arg(script_args)
@@ -3377,6 +3379,7 @@ fn surfpool_flags(
     surfpool_config: &Option<SurfpoolConfig>,
     full_simnet_mode: bool,
     skip_deploy: bool,
+    test_suite_path: Option<&Path>,
 ) -> Result<Vec<String>> {
     let programs = cfg.programs.get(&Cluster::Localnet);
     let mut flags = Vec::new();
@@ -3396,6 +3399,7 @@ fn surfpool_flags(
             write_idl(idl, OutFile::File(idl_out))?;
         }
     }
+
     if let Some(config) = &surfpool_config {
         if let Some(airdrop_addresses) = &config.airdrop_addresses {
             for address in airdrop_addresses {
@@ -3447,6 +3451,13 @@ fn surfpool_flags(
         flags.push("--offline".to_string());
     }
 
+    let block_production_mode = surfpool_config
+        .as_ref()
+        .and_then(|c| c.block_production_mode.clone())
+        .unwrap_or("transaction".into());
+    flags.push("--block-production-mode".to_string());
+    flags.push(block_production_mode);
+
     flags.push("--log-level".to_string());
     flags.push(
         surfpool_config
@@ -3465,7 +3476,14 @@ fn surfpool_flags(
 
     match skip_deploy {
         true => flags.push("--no-deploy".to_string()),
-        false => flags.push("--autopilot".to_string()), // automatically generate in-memory runbooks
+        false => {
+            // automatically generate in-memory runbooks
+            flags.push("--legacy-anchor-compatibility".to_string());
+            if let Some(test_suite_path) = test_suite_path {
+                flags.push("--anchor-test-config-path".to_string());
+                flags.push(test_suite_path.display().to_string());
+            }
+        }
     }
 
     Ok(flags)
@@ -3483,9 +3501,9 @@ fn stream_logs(config: &WithPath<Config>, rpc_url: &str) -> Result<Vec<std::proc
                 .and_then(|s| {
                     s.log_level
                         .as_ref()
-                        .map(|l| l.to_ascii_lowercase().eq("none"))
+                        .map(|l| l.to_ascii_lowercase().ne("none"))
                 })
-                .unwrap_or(true)
+                .unwrap_or(false)
             {
                 println!("Surfpool validator logs: .surfpool/logs/ directory");
             }
@@ -4534,6 +4552,7 @@ fn localnet(
                     &cfg.surfpool_config,
                     full_simnet_mode,
                     skip_deploy,
+                    None,
                 )?);
                 Some(start_surfpool_validator(
                     flags,

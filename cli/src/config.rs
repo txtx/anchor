@@ -753,6 +753,7 @@ pub struct SurfpoolConfig {
     pub runbooks: Option<Vec<String>>,
     pub slot_time: Option<u16>,
     pub log_level: Option<String>,
+    pub block_production_mode: Option<String>,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -795,6 +796,8 @@ pub struct _SurfpoolConfig {
     pub slot_time: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub log_level: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block_production_mode: Option<String>,
 }
 
 impl From<_SurfpoolConfig> for SurfpoolConfig {
@@ -812,6 +815,7 @@ impl From<_SurfpoolConfig> for SurfpoolConfig {
             runbooks: _surfpool_config.runbooks,
             slot_time: _surfpool_config.slot_time,
             log_level: _surfpool_config.log_level,
+            block_production_mode: _surfpool_config.block_production_mode,
         }
     }
 }
@@ -831,6 +835,7 @@ impl From<SurfpoolConfig> for _SurfpoolConfig {
             runbooks: surfpool_config.runbooks,
             slot_time: surfpool_config.slot_time,
             log_level: surfpool_config.log_level,
+            block_production_mode: surfpool_config.block_production_mode,
         }
     }
 }

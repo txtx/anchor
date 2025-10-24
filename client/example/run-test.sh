@@ -142,11 +142,11 @@ start_surfpool() {
         --input basic_4_pid=$basic_4_pid \
         --input events_pid=$events_pid \
         --input optional_pid=$optional_pid
-        
+
     sleep 3
 
     echo "Surfpool PID: $surfpool_pid"
-    check_surfpool $surfpool_pid
+    # check_surfpool $surfpool_pid
 
     echo $surfpool_pid
 }

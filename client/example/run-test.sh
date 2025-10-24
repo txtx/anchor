@@ -125,7 +125,7 @@ check_surfpool() {
     echo "Checking surfpool with PID: $pid"
     exit_state=$(kill -0 "$pid" && echo 'living' || echo 'exited')
     if [ "$exit_state" == 'exited' ]; then
-        echo "Cannot start test validator, see ./test-validator.log"
+        echo "Cannot start surfpool"
         exit 1
     fi
 }

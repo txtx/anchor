@@ -170,7 +170,8 @@ describe("errors", () => {
     }
   });
 
-  it("Emits a mut error", async () => {
+  // Skip until LiteSVM issue is resolved: https://github.com/LiteSVM/litesvm/issues/235
+  it.skip("Emits a mut error", async () => {
     await withLogTest(async () => {
       try {
         const tx = await program.rpc.mutError({

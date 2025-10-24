@@ -131,7 +131,7 @@ check_surfpool() {
 }
 
 start_surfpool() {
-    surfpool start --ci --offline &
+    surfpool start --ci --offline --daemon &
     local surfpool_pid=$!
 
     sleep 3

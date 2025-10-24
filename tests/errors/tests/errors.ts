@@ -4,6 +4,7 @@ import { Keypair, Transaction, TransactionInstruction } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, Token } from "@solana/spl-token";
 import { assert, expect } from "chai";
 import { Errors } from "../target/types/errors";
+import { sleep } from "@project-serum/common";
 
 const withLogTest = async (callback, expectedLogs) => {
   let logTestOk = false;
@@ -33,6 +34,13 @@ const withLogTest = async (callback, expectedLogs) => {
   } catch (err) {
     anchor.getProvider().connection.removeOnLogsListener(listener);
     throw err;
+  }
+  // wait for a max of 5 seconds to receive logs
+  for (let i = 0; i < 50; i++) {
+    if (logTestOk) {
+      break;
+    }
+    await sleep(100);
   }
   anchor.getProvider().connection.removeOnLogsListener(listener);
   assert.isTrue(logTestOk);
@@ -258,6 +266,13 @@ describe("errors", () => {
       await program.provider.sendAndConfirm(tx);
       assert.ok(false);
     } catch (err) {
+      // wait for logs to be captured
+      for (let i = 0; i < 20; i++) {
+        if (signature) {
+          break;
+        }
+        await sleep(100);
+      }
       anchor.getProvider().connection.removeOnLogsListener(listener);
       const errMsg = `Error: Raw transaction ${signature} failed ({"err":{"InstructionError":[0,{"Custom":3010}]}})`;
       assert.strictEqual(err.toString(), errMsg);

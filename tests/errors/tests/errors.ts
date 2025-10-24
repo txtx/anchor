@@ -351,9 +351,9 @@ describe("errors", () => {
     }, [
       "Program log: AnchorError caused by account: wrong_account. Error Code: AccountOwnedByWrongProgram. Error Number: 3007. Error Message: The given account is owned by a different program than expected.",
       "Program log: Left:",
-      "Program log: TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      `Program log: ${TOKEN_PROGRAM_ID}`,
       "Program log: Right:",
-      "Program log: Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS",
+      `Program log: ${program.programId.toString()}`,
     ]);
   });
 

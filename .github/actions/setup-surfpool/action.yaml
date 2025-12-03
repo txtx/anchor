@@ -21,4 +21,5 @@ runs:
         command: |
           echo "Installing Surfpool version ${{ env.SURFPOOL_CLI_VERSION }}"
           curl -sL https://run.surfpool.run/ | sudo bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
